@@ -9,7 +9,7 @@ import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import url from "node:url";
-import cookieTools from "cookie";
+import { parseCookie } from "cookie";
 import https from "https";
 import querystring from "querystring";
 import amazonProxy from "./lib/proxy";
@@ -17,11 +17,14 @@ import type {
   AmazonProxyOptions,
   CookieMap,
   ErrorParam,
+  Logger,
   ProxyServer,
   RequestCallbackType,
   RequestInfoType,
   RequestOptions,
-} from "./lib/types";
+} from "./types/types";
+import { customStringify } from "./util/customStringify";
+import { LoggingFacade } from "./util/LoggingFacade";
 
 const defaultAmazonPage = "amazon.de";
 const defaultUserAgent =
@@ -30,7 +33,7 @@ const defaultUserAgentLinux =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36";
 //const defaultUserAgentMacOs = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36';
 const defaultProxyCloseWindowHTML =
-  "<b>Amazon Alexa Cookie successfully retrieved. You can close the browser.</b>";
+  "<b>Amazon Alexa Cookie successfuly retrieved. You can close the browser.</b>";
 const defaultAcceptLanguage = "de-DE";
 
 const apiCallVersion = "2.2.651540.0";
@@ -60,22 +63,26 @@ class AlexaCookie {
   ) => void;
   stopProxyServer: (callback?: RequestCallbackType) => void;
 
+  _logger: Logger = new LoggingFacade(); // defaults to "no-ops"
+
   constructor() {
     let proxyServer: ProxyServer;
 
-    let _options: AmazonProxyOptions;
+    let _options: AmazonProxyOptions = { logger: new LoggingFacade() };
+    // use the configured logger if it's been provided
+    this._logger =
+      new LoggingFacade({ logger: _options?.logger as Logger }) ?? this._logger;
 
     let Cookie: string | undefined = "";
+
+    const _self = this;
 
     const addCookies = (
       Cookie: string | string[] | undefined,
       headers: IncomingHttpHeaders,
     ): string => {
-      if (!_options.logger) {
-        _options.logger = console;
-      }
       if (!headers || !headers["set-cookie"]) return Cookie as string;
-      const cookies = cookieTools.parse(
+      const cookies = parseCookie(
         ((Cookie as string[])?.join?.("; ") ?? Cookie) || "",
       );
       let cookie: string | RegExpMatchArray | null;
@@ -89,11 +96,11 @@ class AlexaCookie {
               cookies[cookie[1]] &&
               cookies[cookie[1]] !== cookie[2]
             ) {
-              _options.logger.log(
+              _self._logger.info(
                 `Alexa-Cookie: Update Cookie ${cookie[1]} = ${cookie[2]}`,
               );
             } else if (!cookies[cookie[1]]) {
-              _options.logger.log(
+              _self._logger.info(
                 `Alexa-Cookie: Add Cookie ${cookie[1]} = ${cookie[2]}`,
               );
             }
@@ -114,11 +121,9 @@ class AlexaCookie {
       infoOrCallback: RequestInfoType | RequestCallbackType,
       callback?: RequestCallbackType,
     ) => {
-      if (!_options.logger) {
-        _options.logger = console;
-      }
-      _options.logger.log(
-        `Alexa-Cookie: Sending Request with ${JSON.stringify(options)}`,
+
+      _self._logger.debug(
+        `Alexa-Cookie: Sending Request with options: ${customStringify(options, null, 2)}`,
       );
       if (typeof infoOrCallback === "function") {
         callback = infoOrCallback;
@@ -136,9 +141,7 @@ class AlexaCookie {
       }
 
       const req = https.request(options, (res) => {
-        if (!_options.logger) {
-          _options.logger = console;
-        }
+
         let body = "";
         infoOrCallback.requests.push({ options: options, response: res });
 
@@ -148,7 +151,7 @@ class AlexaCookie {
           res.statusCode >= 300 &&
           res.statusCode < 400
         ) {
-          _options.logger.log(
+          _self._logger.debug(
             `Alexa-Cookie: Response (${res.statusCode})${res.headers.location ? ` - Redirect to ${res.headers.location}` : ""}`,
           );
           //options.url = res.headers.location;
@@ -162,7 +165,7 @@ class AlexaCookie {
           res.socket?.end();
           return request(options, infoOrCallback, callback);
         } else {
-          _options.logger.log(`Alexa-Cookie: Response (${res.statusCode})`);
+          _self._logger.debug(`Alexa-Cookie: Response (${res.statusCode})`);
           res.on("data", (chunk) => {
             body += chunk;
           });
@@ -204,24 +207,22 @@ class AlexaCookie {
     };
 
     const initConfig = () => {
-      if (!_options.logger) {
-        _options.logger = console;
-      }
+
       _options.amazonPage = _options.amazonPage || defaultAmazonPage;
       if (_options.formerRegistrationData?.amazonPage)
         _options.amazonPage = _options.formerRegistrationData.amazonPage;
 
-      _options.logger.log(
+      _self._logger.info(
         `Alexa-Cookie: Use as Login-Amazon-URL: ${_options.amazonPage}`,
       );
 
       _options.baseAmazonPage = _options.baseAmazonPage || "amazon.com";
-      _options.logger.log(
+      _self._logger.info(
         `Alexa-Cookie: Use as Base-Amazon-URL: ${_options.baseAmazonPage}`,
       );
 
       _options.deviceAppName = _options.deviceAppName || defaultAppName;
-      _options.logger.log(
+      _self._logger.info(
         `Alexa-Cookie: Use as Device-App-Name: ${_options.deviceAppName}`,
       );
 
@@ -253,14 +254,14 @@ class AlexaCookie {
           _options.userAgent = defaultUserAgentLinux;
         }
       }
-      _options.logger.log(
+      _self._logger.info(
         `Alexa-Cookie: Use as User-Agent: ${_options.userAgent}`,
       );
 
       _options.acceptLanguage =
         _options.acceptLanguage || defaultAcceptLanguage;
 
-      _options.logger.log(
+      _self._logger.info(
         `Alexa-Cookie: Use as Accept-Language: ${_options.acceptLanguage}`,
       );
 
@@ -268,7 +269,7 @@ class AlexaCookie {
         _options.proxyCloseWindowHTML || defaultProxyCloseWindowHTML;
 
       if (_options.setupProxy && !_options.proxyOwnIp) {
-        _options.logger.log(
+        _self._logger.info(
           "Alexa-Cookie: Own-IP Setting missing for Proxy. Disabling!",
         );
         _options.setupProxy = false;
@@ -277,12 +278,12 @@ class AlexaCookie {
         _options.setupProxy = true;
         _options.proxyPort = _options.proxyPort || 0;
         _options.proxyListenBind = _options.proxyListenBind || "0.0.0.0";
-        _options.logger.log(
+        _self._logger.info(
           `Alexa-Cookie: Proxy-Mode enabled if needed: ${_options.proxyOwnIp}:${_options.proxyPort} to listen on ${_options.proxyListenBind}`,
         );
       } else {
         _options.setupProxy = false;
-        _options.logger.log("Alexa-Cookie: Proxy mode disabled");
+        _self._logger.info("Alexa-Cookie: Proxy mode disabled");
       }
       _options.proxyLogLevel = _options.proxyLogLevel || "warn";
       _options.amazonPageProxyLanguage =
@@ -296,18 +297,11 @@ class AlexaCookie {
       _options: AmazonProxyOptions,
       callback: RequestCallbackType,
     ) => {
-      if (!_options.logger) {
-        _options.logger = console;
-      }
 
       // get CSRF
       const csrfUrls = csrfOptions;
 
       function csrfTry() {
-        if (!_options.logger) {
-          _options.logger = console;
-        }
-
         const path = csrfUrls.shift();
         const options = {
           host: `alexa.${_options.amazonPage}`,
@@ -324,18 +318,14 @@ class AlexaCookie {
           },
         };
 
-        _options.logger.log(`Alexa-Cookie: Step 4: get CSRF via ${path}`);
+        _self._logger.debug(`Alexa-Cookie: Step 4: get CSRF via ${path}`);
         request(
           options,
           (_error: ErrorParam, response: IncomingMessage) => {
-            if (!_options.logger) {
-              _options.logger = console;
-            }
-
             cookie = addCookies(cookie, response?.headers ?? null);
             const ar = /csrf=([^;]+)/.exec(cookie);
             const csrf = ar ? ar[1] : undefined;
-            _options.logger.log(
+            _self._logger.info(
               `Alexa-Cookie: Result: csrf=${csrf}, Cookie=${cookie}`,
             );
             if (!csrf && csrfUrls.length) {
@@ -360,18 +350,23 @@ class AlexaCookie {
       __options?: AmazonProxyOptions | RequestCallbackType,
       callback?: RequestCallbackType,
     ) => {
+      if (__options && Object.hasOwn(__options, "logger")) {
+        _self._logger = (__options as AmazonProxyOptions).logger as Logger;
+      }
+
+      // == optional parameter shifting ==
       if (email !== undefined && typeof email !== "string") {
-        //@ts-expect-error ts-2322
+        /*        @ts-expect-error ts-2322 - (mismatching types) we're parameter-shifting, this is normal  */
         callback = __options;
-        //@ts-expect-error ts-2322
+        /*        @ts-expect-error ts-2322 */
         __options = password;
         password = email;
         email = null;
       }
       if (password !== undefined && typeof password !== "string") {
-        //@ts-expect-error ts-2322
+        /*        @ts-expect-error ts-2322 */
         callback = __options;
-        //@ts-expect-error ts-2322
+        /*        @ts-expect-error ts-2322 */
         __options = password;
         password = null;
       }
@@ -380,11 +375,9 @@ class AlexaCookie {
         callback = __options;
         __options = {};
       }
+      // == end of parameter shifting ==
 
       _options = __options as AmazonProxyOptions;
-      if (!_options.logger) {
-        _options.logger = console;
-      }
 
       if (!email || !password) {
         _options.proxyOnly = true;
@@ -415,7 +408,7 @@ class AlexaCookie {
             Accept: "*/*",
           },
         };
-        _options.logger.log(
+        _self._logger.debug(
           "Alexa-Cookie: Step 1: get first cookie and authentication redirect",
         );
         request(
@@ -426,10 +419,6 @@ class AlexaCookie {
             body: string | Record<string, string>,
             info,
           ) => {
-            if (!_options.logger) {
-              _options.logger = console;
-            }
-
             if (error) {
               callback?.(error, null);
               return;
@@ -457,16 +446,12 @@ class AlexaCookie {
               gzip: true,
               body: querystring.stringify(getFields(body as string)) as string,
             };
-            _options.logger.log(
+            _self._logger.debug(
               "Alexa-Cookie: Step 2: login empty to generate session",
             );
             request(
               options,
               (error: ErrorParam, response: IncomingMessage, body: string) => {
-                if (!_options.logger) {
-                  _options.logger = console;
-                }
-
                 if (error) {
                   callback?.(error, null);
                   return;
@@ -495,7 +480,7 @@ class AlexaCookie {
                   },
                 );
 
-                _options.logger.log(
+                _self._logger.debug(
                   "Alexa-Cookie: Step 3: login with filled form, referer contains session id",
                 );
                 request(
@@ -520,7 +505,7 @@ class AlexaCookie {
                       !lastRequestOptions.path.endsWith(".html")
                     ) {
                       let errMessage =
-                        "Login unsuccessfull. Please check credentials.";
+                        "Login unsuccessful. Please check credentials.";
                       const amazonMessage = body.match(
                         /auth-warning-message-box[\S\s]*"a-alert-heading">([^<]*)[\S\s]*<li><[^>]*>\s*([^<\n]*)\s*</,
                       );
@@ -529,7 +514,7 @@ class AlexaCookie {
                       }
                       if (_options.setupProxy) {
                         if (proxyServer) {
-                          errMessage += ` Please open http://${_options.proxyOwnIp}:${_options.proxyPort}/ with your browser and login to Amazon. The cookie will be output here after successfull login.`;
+                          errMessage += ` Please open http://${_options.proxyOwnIp}:${_options.proxyPort}/ with your browser and login to Amazon. The cookie will be output here after successful login.`;
                         } else {
                           amazonProxy.initAmazonProxy(
                             _options,
@@ -550,7 +535,7 @@ class AlexaCookie {
                                   proxyServer.address() as AddressInfo
                                 )?.port;
                               }
-                              errMessage += ` Please open http://${_options.proxyOwnIp}:${_options.proxyPort}/ with your browser and login to Amazon. The cookie will be output here after successfull login.`;
+                              errMessage += ` Please open http://${_options.proxyOwnIp}:${_options.proxyPort}/ with your browser and login to Amazon. The cookie will be output here after successful login.`;
                               callback?.(new Error(errMessage), null);
                             },
                           );
@@ -588,7 +573,7 @@ class AlexaCookie {
             if (!_options.proxyPort || _options.proxyPort === 0) {
               _options.proxyPort = (proxyServer.address() as AddressInfo)?.port;
             }
-            const errMessage = `Please open http://${_options.proxyOwnIp}:${_options.proxyPort}/ with your browser and login to Amazon. The cookie will be output here after successfull login.`;
+            const errMessage = `Please open http://${_options.proxyOwnIp}:${_options.proxyPort}/ with your browser and login to Amazon. The cookie will be output here after successful login.`;
             callback?.(new Error(errMessage), null);
           },
         );
@@ -604,12 +589,11 @@ class AlexaCookie {
       loginData: CookieMap,
       callback: RequestCallbackType,
     ) => {
-      if (!_options.logger) {
-        _options.logger = console;
+      if (_options && Object.hasOwn(_options, "logger")) {
+        _self._logger = _options.logger as Logger;
       }
-
-      _options.logger.log(
-        `Handle token registration Start: ${JSON.stringify(loginData)}`,
+      _self._logger.debug(
+        `Handle token registration Start: ${customStringify(loginData, null, 2)}`,
       );
 
       loginData.deviceAppName = _options.deviceAppName;
@@ -625,12 +609,12 @@ class AlexaCookie {
         }
         deviceSerial = deviceSerialBuffer.toString("hex");
       } else {
-        _options.logger.log("Proxy Init: reuse deviceSerial from former data");
+        _self._logger.info("Proxy Init: reuse deviceSerial from former data");
         deviceSerial = _options.formerRegistrationData.deviceSerial;
       }
       loginData.deviceSerial = deviceSerial;
 
-      const cookies = cookieTools.parse(loginData.loginCookie ?? "");
+      const cookies = parseCookie(loginData.loginCookie ?? "");
       Cookie = loginData.loginCookie;
 
       /*
@@ -641,7 +625,7 @@ class AlexaCookie {
         requested_extensions: ["device_info", "customer_info"],
         cookies: {
           website_cookies: [] as { Value: string | undefined; Name: string }[],
-          domain: `.${_options.baseAmazonPage}`,
+          domain: `.${_options.baseAmazonPage} `,
         },
         registration_data: {
           domain: "Device",
@@ -694,12 +678,14 @@ class AlexaCookie {
           "Content-Type": "application/json",
           Cookie: loginData.loginCookie,
           Accept: "application/json",
-          "x-amzn-identity-auth-domain": `api.${_options.baseAmazonPage}`,
+          "x-amzn-identity-auth-domain": `api.${_options.baseAmazonPage} `,
         },
         body: JSON.stringify(registerData),
       };
-      _options.logger.log("Alexa-Cookie: Register App");
-      _options.logger.log(JSON.stringify(options));
+      _self._logger.debug("Alexa-Cookie: Register App");
+      _self._logger.debug(
+        `Alexa-Cookie: Options= ${customStringify(options, null, 2)}`,
+      );
       request(
         options,
         (
@@ -720,10 +706,6 @@ class AlexaCookie {
             };
           },
         ) => {
-          if (!_options.logger) {
-            _options.logger = console;
-          }
-
           if (error) {
             callback?.(error, null);
             return;
@@ -731,13 +713,16 @@ class AlexaCookie {
           try {
             if (typeof body !== "object") body = JSON.parse(body);
           } catch (err) {
-            _options.logger.log(
-              `Register App Response: ${JSON.stringify(body)}`,
+            _self._logger.error(
+              `Register App Response: ${customStringify(body, null, 2)}`,
             );
+            _self._logger.error(err);
             callback?.(err, null);
             return;
           }
-          _options.logger.log(`Register App Response: ${JSON.stringify(body)}`);
+          _self._logger.debug(
+            `Register App Response: ${customStringify(body, null, 2)}`,
+          );
 
           if (
             !body.response ||
@@ -761,15 +746,12 @@ class AlexaCookie {
           ) {
             const newCookies = [] as string[];
             body.response.success.tokens.website_cookies.forEach((cookie) => {
-              newCookies.push(`${cookie.Name}=${cookie.Value};`);
+              newCookies.push(`${cookie.Name}=${cookie.Value}; `);
             });
             Cookie = addCookies(Cookie, { "set-cookie": newCookies });
           }
 
           registerTokenCapabilities(accessToken, () => {
-            if (!_options.logger) {
-              _options.logger = console;
-            }
             /*
               Get Amazon Marketplace Country
           */
@@ -787,27 +769,24 @@ class AlexaCookie {
                 Cookie: Cookie,
               },
             };
-            _options.logger.log("Alexa-Cookie: Get User data");
-            _options.logger.log(JSON.stringify(options));
+            _self._logger.debug("Alexa-Cookie: Get User data");
+            _self._logger.debug(`Options: ${customStringify(options, null, 2)}`);
             request(
               options,
               (error: ErrorParam, response: IncomingMessage, body) => {
-                if (!_options.logger) {
-                  _options.logger = console;
-                }
-
                 if (!error) {
                   try {
                     if (typeof body !== "object") body = JSON.parse(body);
                   } catch (err) {
-                    _options.logger.log(
-                      `Get User data Response: ${JSON.stringify(body)}`,
+                    _self._logger.error(
+                      `Get User data Response: ${customStringify(body, null, 2)}`,
                     );
+                    _self._logger.error(err);
                     callback?.(err, null);
                     return;
                   }
-                  _options.logger.log(
-                    `Get User data Response: ${JSON.stringify(body)}`,
+                  _self._logger.debug(
+                    `Get User data Response:${customStringify(body, null, 2)}`,
                   );
 
                   Cookie = addCookies(Cookie, response.headers);
@@ -829,11 +808,11 @@ class AlexaCookie {
                     !_options.formerRegistrationData.amazonPage) &&
                   _options.amazonPage
                 ) {
-                  _options.logger.log(
-                    `Continue with externally set amazonPage: ${_options.amazonPage}`,
+                  _self._logger.debug(
+                    `Continue with externally set amazonPage: ${_options.amazonPage} `,
                   );
                 } else if (error) {
-                  _options.logger.log(
+                  _self._logger.warn(
                     "Ignore error while getting user data and amazonPage because previously set amazonPage is available",
                   );
                 }
@@ -853,10 +832,6 @@ class AlexaCookie {
                       loginData.localCookie,
                       _options,
                       (err: ErrorParam, resData) => {
-                        if (!_options.logger) {
-                          _options.logger = console;
-                        }
-
                         if (err) {
                           callback?.(
                             new Error(
@@ -872,8 +847,8 @@ class AlexaCookie {
                         delete loginData.authorization_code;
                         delete loginData.verifier;
                         loginData.dataVersion = 2;
-                        _options.logger.log(
-                          `Final Registration Result: ${JSON.stringify(loginData)}`,
+                        _self._logger.info(
+                          `Final Registration Result: ${customStringify(loginData)} `,
                         );
                         callback?.(null, loginData);
                       },
@@ -891,9 +866,6 @@ class AlexaCookie {
       accessToken: string,
       callback: RequestCallbackType,
     ) => {
-      if (!_options.logger) {
-        _options.logger = console;
-      }
 
       /*
           Register Capabilities - mainly needed for HTTP/2 push infos
@@ -908,30 +880,27 @@ class AlexaCookie {
           "Accept-Charset": "utf-8",
           Connection: "keep-alive",
           "Content-type": "application/json; charset=UTF-8",
-          authorization: `Bearer ${accessToken}`,
+          authorization: `Bearer ${accessToken} `,
         },
         body: '{"legacyFlags":{"SUPPORTS_COMMS":true,"SUPPORTS_ARBITRATION":true,"SCREEN_WIDTH":1170,"SUPPORTS_SCRUBBING":true,"SPEECH_SYNTH_SUPPORTS_TTS_URLS":false,"SUPPORTS_HOME_AUTOMATION":true,"SUPPORTS_DROPIN_OUTBOUND":true,"FRIENDLY_NAME_TEMPLATE":"VOX","SUPPORTS_SIP_OUTBOUND_CALLING":true,"VOICE_PROFILE_SWITCHING_DISABLED":true,"SUPPORTS_LYRICS_IN_CARD":false,"SUPPORTS_DATAMART_NAMESPACE":"Vox","SUPPORTS_VIDEO_CALLING":true,"SUPPORTS_PFM_CHANGED":true,"SUPPORTS_TARGET_PLATFORM":"TABLET","SUPPORTS_SECURE_LOCKSCREEN":false,"AUDIO_PLAYER_SUPPORTS_TTS_URLS":false,"SUPPORTS_KEYS_IN_HEADER":false,"SUPPORTS_MIXING_BEHAVIOR_FOR_AUDIO_PLAYER":false,"AXON_SUPPORT":true,"SUPPORTS_TTS_SPEECHMARKS":true},"envelopeVersion":"20160207","capabilities":[{"version":"0.1","interface":"CardRenderer","type":"AlexaInterface"},{"interface":"Navigation","type":"AlexaInterface","version":"1.1"},{"type":"AlexaInterface","version":"2.0","interface":"Alexa.Comms.PhoneCallController"},{"type":"AlexaInterface","version":"1.1","interface":"ExternalMediaPlayer"},{"type":"AlexaInterface","interface":"Alerts","configurations":{"maximumAlerts":{"timers":2,"overall":99,"alarms":2}},"version":"1.3"},{"version":"1.0","interface":"Alexa.Display.Window","type":"AlexaInterface","configurations":{"templates":[{"type":"STANDARD","id":"app_window_template","configuration":{"sizes":[{"id":"fullscreen","type":"DISCRETE","value":{"value":{"height":1440,"width":3200},"unit":"PIXEL"}}],"interactionModes":["mobile_mode","auto_mode"]}}]}},{"type":"AlexaInterface","interface":"AccessoryKit","version":"0.1"},{"type":"AlexaInterface","interface":"Alexa.AudioSignal.ActiveNoiseControl","version":"1.0","configurations":{"ambientSoundProcessingModes":[{"name":"ACTIVE_NOISE_CONTROL"},{"name":"PASSTHROUGH"}]}},{"interface":"PlaybackController","type":"AlexaInterface","version":"1.0"},{"version":"1.0","interface":"Speaker","type":"AlexaInterface"},{"version":"1.0","interface":"SpeechSynthesizer","type":"AlexaInterface"},{"version":"1.0","interface":"AudioActivityTracker","type":"AlexaInterface"},{"type":"AlexaInterface","interface":"Alexa.Camera.LiveViewController","version":"1.0"},{"type":"AlexaInterface","version":"1.0","interface":"Alexa.Input.Text"},{"type":"AlexaInterface","interface":"Alexa.PlaybackStateReporter","version":"1.0"},{"version":"1.1","interface":"Geolocation","type":"AlexaInterface"},{"interface":"Alexa.Health.Fitness","version":"1.0","type":"AlexaInterface"},{"interface":"Settings","type":"AlexaInterface","version":"1.0"},{"configurations":{"interactionModes":[{"dialog":"SUPPORTED","interactionDistance":{"value":18,"unit":"INCHES"},"video":"SUPPORTED","keyboard":"SUPPORTED","id":"mobile_mode","uiMode":"MOBILE","touch":"SUPPORTED"},{"video":"UNSUPPORTED","dialog":"SUPPORTED","interactionDistance":{"value":36,"unit":"INCHES"},"uiMode":"AUTO","touch":"SUPPORTED","id":"auto_mode","keyboard":"UNSUPPORTED"}]},"type":"AlexaInterface","interface":"Alexa.InteractionMode","version":"1.0"},{"type":"AlexaInterface","configurations":{"catalogs":[{"type":"IOS_APP_STORE","identifierTypes":["URI_HTTP_SCHEME","URI_CUSTOM_SCHEME"]}]},"version":"0.2","interface":"Alexa.Launcher"},{"interface":"System","version":"1.0","type":"AlexaInterface"},{"interface":"Alexa.IOComponents","type":"AlexaInterface","version":"1.4"},{"type":"AlexaInterface","interface":"Alexa.FavoritesController","version":"1.0"},{"version":"1.0","type":"AlexaInterface","interface":"Alexa.Mobile.Push"},{"type":"AlexaInterface","interface":"InteractionModel","version":"1.1"},{"interface":"Alexa.PlaylistController","type":"AlexaInterface","version":"1.0"},{"interface":"SpeechRecognizer","type":"AlexaInterface","version":"2.1"},{"interface":"AudioPlayer","type":"AlexaInterface","version":"1.3"},{"type":"AlexaInterface","version":"3.1","interface":"Alexa.RTCSessionController"},{"interface":"VisualActivityTracker","version":"1.1","type":"AlexaInterface"},{"interface":"Alexa.PlaybackController","version":"1.0","type":"AlexaInterface"},{"type":"AlexaInterface","interface":"Alexa.SeekController","version":"1.0"},{"interface":"Alexa.Comms.MessagingController","type":"AlexaInterface","version":"1.0"}]}',
 
         // New
         // {"envelopeVersion":"20160207","legacyFlags":{"SUPPORTS_TARGET_PLATFORM":"TABLET","SUPPORTS_SECURE_LOCKSCREEN":false,"SUPPORTS_DATAMART_NAMESPACE":"Vox","AXON_SUPPORT":true,"SUPPORTS_DROPIN_OUTBOUND":true,"SUPPORTS_LYRICS_IN_CARD":false,"VOICE_PROFILE_SWITCHING_DISABLED":true,"SUPPORTS_ARBITRATION":true,"SUPPORTS_HOME_AUTOMATION":true,"SUPPORTS_KEYS_IN_HEADER":false,"SUPPORTS_TTS_SPEECHMARKS":true,"AUDIO_PLAYER_SUPPORTS_TTS_URLS":false,"SUPPORTS_SIP_OUTBOUND_CALLING":true,"SUPPORTS_MIXING_BEHAVIOR_FOR_AUDIO_PLAYER":false,"SUPPORTS_COMMS":true,"SCREEN_WIDTH":1170,"SUPPORTS_VIDEO_CALLING":true,"FRIENDLY_NAME_TEMPLATE":"VOX","SUPPORTS_PFM_CHANGED":true,"SPEECH_SYNTH_SUPPORTS_TTS_URLS":false,"SUPPORTS_SCRUBBING":true},"capabilities":[{"type":"AlexaInterface","interface":"AudioPlayer","version":"1.3"},{"version":"1.0","type":"AlexaInterface","interface":"Settings"},{"interface":"System","type":"AlexaInterface","version":"1.0"},{"type":"AlexaInterface","interface":"AudioActivityTracker","version":"1.0"},{"interface":"SpeechRecognizer","version":"2.3","type":"AlexaInterface"},{"type":"AlexaInterface","interface":"Speaker","version":"1.0"},{"type":"AlexaInterface","version":"1.0","interface":"SpeechSynthesizer"},{"type":"AlexaInterface","version":"0.1","interface":"CardRenderer"},{"interface":"PlaybackController","type":"AlexaInterface","version":"1.0"},{"version":"1.1","type":"AlexaInterface","interface":"Navigation"},{"version":"1.1","type":"AlexaInterface","interface":"InteractionModel"},{"type":"AlexaInterface","version":"1.1","interface":"Geolocation"}]}
       };
-      _options.logger.log("Alexa-Cookie: Register capabilities");
-      _options.logger.log(JSON.stringify(options));
+      _self._logger.debug("Alexa-Cookie: Register capabilities");
+      _self._logger.debug(options);
       request(options, (error, response, body) => {
-        if (!_options.logger) {
-          _options.logger = console;
-        }
-
         if (
           error ||
           (response.statusCode !== 204 && response.statusCode !== 200)
         ) {
-          _options.logger.log(
+          _self._logger.error(
             "Alexa-Cookie: Could not set capabilities, Push connection might not work!",
           );
-          _options.logger.log(
-            `Alexa-Cookie: ${JSON.stringify(error)}: ${JSON.stringify(body)}`,
+          _self._logger.error(
+            `Alexa - Cookie: Error: BODY: ${customStringify(body, null, 2)}`,
           );
+          _self._logger.error(error);
         }
         callback?.();
       });
@@ -942,9 +911,6 @@ class AlexaCookie {
       refreshToken?: string,
       callback?: RequestCallbackType,
     ) => {
-      if (!_options.logger) {
-        _options.logger = console;
-      }
 
       Cookie = ""; // Reset because we are switching domains
       /*
@@ -954,7 +920,7 @@ class AlexaCookie {
       const exchangeParams = {
         "di.os.name": "iOS",
         app_version: apiCallVersion,
-        domain: `.${amazonPage}`,
+        domain: `.${amazonPage} `,
         source_token: refreshToken,
         requested_token_type: "auth_cookies",
         source_token_type: "refresh_token",
@@ -964,7 +930,7 @@ class AlexaCookie {
         "di.os.version": "16.6",
       };
       const options = {
-        host: `www.${amazonPage}`,
+        host: `www.${amazonPage} `,
         path: "/ap/exchangetoken/cookies",
         method: "POST",
         headers: {
@@ -975,20 +941,16 @@ class AlexaCookie {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "*/*",
           Cookie: Cookie,
-          "x-amzn-identity-auth-domain": `api.${amazonPage}`,
+          "x-amzn-identity-auth-domain": `api.${amazonPage} `,
         },
         body: querystring.stringify(exchangeParams, undefined, undefined, {
           encodeURIComponent: encodeURIComponent,
         }),
       };
-      _options.logger.log(`Alexa-Cookie: Exchange tokens for ${amazonPage}`);
-      _options.logger.log(JSON.stringify(options));
+      _self._logger.debug(`Alexa - Cookie: Exchange tokens for ${amazonPage}`);
+      _self._logger.debug(options);
 
       request(options, (error: ErrorParam, response: IncomingMessage, body) => {
-        if (!_options.logger) {
-          _options.logger = console;
-        }
-
         if (error) {
           callback?.(error, null);
           return;
@@ -996,13 +958,15 @@ class AlexaCookie {
         try {
           if (typeof body !== "object") body = JSON.parse(body);
         } catch (err) {
-          _options.logger.log(
-            `Exchange Token Response: ${JSON.stringify(body)}`,
+          _self._logger.error(
+            `Exchange Token Response: ${customStringify(body, null, 2)}`,
           );
           callback?.(err, null);
           return;
         }
-        _options.logger.log(`Exchange Token Response: ${JSON.stringify(body)}`);
+        _self._logger.debug(
+          `Exchange Token Response: ${customStringify(body, null, 2)}`,
+        );
 
         if (
           !body.response ||
@@ -1012,7 +976,7 @@ class AlexaCookie {
           callback?.(new Error("No cookies in Exchange response"), null);
           return;
         }
-        if (!body.response.tokens.cookies[`.${amazonPage}`]) {
+        if (!body.response.tokens.cookies[`.${amazonPage} `]) {
           callback?.(
             new Error(`No cookies for ${amazonPage} in Exchange response`),
             null,
@@ -1021,20 +985,16 @@ class AlexaCookie {
         }
 
         Cookie = addCookies(Cookie, response.headers);
-        const cookies = cookieTools.parse(Cookie);
-        body.response.tokens.cookies[`.${amazonPage}`].forEach(
+        const cookies = parseCookie(Cookie);
+        body.response.tokens.cookies[`.${amazonPage} `].forEach(
           (cookie: { Name: string; Value: string }) => {
-            if (!_options.logger) {
-              _options.logger = console;
-            }
-
             if (cookies[cookie.Name] && cookies[cookie.Name] !== cookie.Value) {
-              _options.logger.log(
-                `Alexa-Cookie: Update Cookie ${cookie.Name} = ${cookie.Value}`,
+              _self._logger.info(
+                `Alexa - Cookie: Update Cookie ${cookie.Name} = ${cookie.Value} `,
               );
             } else if (!cookies[cookie.Name]) {
-              _options.logger.log(
-                `Alexa-Cookie: Add Cookie ${cookie.Name} = ${cookie.Value}`,
+              _self._logger.info(
+                `Alexa - Cookie: Add Cookie ${cookie.Name} = ${cookie.Value} `,
               );
             }
             cookies[cookie.Name] = cookie.Value;
@@ -1054,6 +1014,10 @@ class AlexaCookie {
       __options: AmazonProxyOptions,
       callback: RequestCallbackType,
     ) => {
+      if (__options && Object.hasOwn(__options, "logger")) {
+        _self._logger = (__options as AmazonProxyOptions).logger as Logger;
+      }
+
       if (
         !__options ||
         !__options.formerRegistrationData ||
@@ -1073,9 +1037,6 @@ class AlexaCookie {
       }
 
       _options = __options;
-      if (!_options.logger) {
-        _options.logger = console;
-      }
 
       __options.proxyOnly = true;
 
@@ -1098,7 +1059,7 @@ class AlexaCookie {
       };
 
       const options = {
-        host: `api.${_options.baseAmazonPage}`,
+        host: `api.${_options.baseAmazonPage} `,
         path: "/auth/token",
         method: "POST",
         headers: {
@@ -1109,18 +1070,14 @@ class AlexaCookie {
           "Content-Type": "application/x-www-form-urlencoded",
           Cookie: _options.formerRegistrationData.loginCookie,
           Accept: "application/json",
-          "x-amzn-identity-auth-domain": `api.${_options.baseAmazonPage}`,
+          "x-amzn-identity-auth-domain": `api.${_options.baseAmazonPage} `,
         },
         body: querystring.stringify(refreshData),
       };
       Cookie = _options.formerRegistrationData.loginCookie;
-      _options.logger.log("Alexa-Cookie: Refresh Token");
-      _options.logger.log(JSON.stringify(options));
+      _self._logger.info("Alexa-Cookie: Refresh Token");
+      _self._logger.debug(options);
       request(options, (error, response, body) => {
-        if (!_options.logger) {
-          _options.logger = console;
-        }
-
         if (error) {
           callback?.(error, null);
           return;
@@ -1128,13 +1085,15 @@ class AlexaCookie {
         try {
           if (typeof body !== "object") body = JSON.parse(body);
         } catch (err) {
-          _options.logger.log(
-            `Refresh Token Response: ${JSON.stringify(body)}`,
+          _self._logger.error(
+            `Refresh Token Response: ${customStringify(body, null, 2)}`,
           );
           callback?.(err, null);
           return;
         }
-        _options.logger.log(`Refresh Token Response: ${JSON.stringify(body)}`);
+        _self._logger.debug(
+          `Refresh Token Response: ${customStringify(body, null, 2)}`,
+        );
         _options.formerRegistrationData = _options.formerRegistrationData ?? {};
 
         _options.formerRegistrationData.loginCookie = addCookies(
@@ -1143,6 +1102,9 @@ class AlexaCookie {
         );
 
         if (!body.access_token) {
+          _options.logger?.debug(
+            "ERROR: No new access token in Refresh Token response",
+          );
           callback?.(
             new Error("No new access token in Refresh Token response"),
             null,
@@ -1163,15 +1125,16 @@ class AlexaCookie {
               _options.formerRegistrationData ?? {};
 
             if (err) {
+              _options.logger?.error(err);
               callback?.(err, null);
             }
 
             // Restore frc and map-md
-            const initCookies = cookieTools.parse(
+            const initCookies = parseCookie(
               _options.formerRegistrationData?.loginCookie ?? "",
             );
-            let newCookie = `frc=${initCookies.frc}; `;
-            newCookie += `map-md=${initCookies["map-md"]}; `;
+            let newCookie = `frc = ${initCookies.frc}; `;
+            newCookie += `map - md=${initCookies["map-md"]}; `;
             newCookie += comCookie;
 
             _options.formerRegistrationData.loginCookie = newCookie;

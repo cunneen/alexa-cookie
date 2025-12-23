@@ -33,6 +33,8 @@ export type Logger = {
   info: LoggerFunction;
   warn: LoggerFunction;
   error: LoggerFunction;
+  trace?: LoggerFunction;
+  flush?: (err?: Error) => void;
 };
 
 export type RegistrationData = {
@@ -103,6 +105,20 @@ export type ProxyServer = http.Server<
   typeof http.IncomingMessage,
   typeof http.ServerResponse
 > | null;
+
+export type ProxiedHeaders = {
+  agent?: { _sessionCache?: object & string & string[] & undefined };
+} & (
+  | http.IncomingHttpHeaders
+  | (
+      | http.OutgoingHttpHeaders
+      | { getHeader: (header: string) => string | undefined | number }
+    )
+);
+
+export type ProxiedRequest = {
+  headers?: ProxiedHeaders;
+} & http.ClientRequest;
 
 export type ListeningCallbackType = ((server: ProxyServer) => void) | null;
 

@@ -90,3 +90,9 @@ $RECYCLE.BIN/
 lib/formerDataStore.json
 /.history/
 
+
+/dist/
+
+
+/data/
+
