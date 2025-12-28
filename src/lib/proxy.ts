@@ -5,8 +5,6 @@
 /* jslint esversion: 6 */
 
 import {
-  type BinaryLike,
-  createHash,
   randomBytes,
   randomFillSync,
 } from "node:crypto";
@@ -34,11 +32,13 @@ import type {
   ProxyResponseSocketType,
   Router,
 } from "../types/types";
+import { base64URLEncode } from "../util/base64URLEncode";
 import { customStringify } from "../util/customStringify";
 import { LoggingFacade } from "../util/LoggingFacade";
 import {
   sanitizeRequestForLogging,
 } from "../util/logging";
+import { sha256 } from "../util/sha256";
 
 const FORMERDATA_STORE_VERSION = 4;
 
@@ -171,19 +171,9 @@ function initAmazonProxy(
     writeFileSync(formerDataStorePath, JSON.stringify(formerDataStore), "utf8");
     logger.debug(`saved registration data at: ${formerDataStorePath}`)
   } catch (_err) {
-    // ignore
+    logger.warn(`could not save registration data at: ${formerDataStorePath}`)
   }
 
-  function base64URLEncode(str: string | Buffer) {
-    return str
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
-  }
-  function sha256(buffer: BinaryLike) {
-    return createHash("sha256").update(buffer).digest();
-  }
   const code_verifier = base64URLEncode(randomBytes(32));
   const code_challenge = base64URLEncode(sha256(code_verifier));
 
