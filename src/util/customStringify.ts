@@ -1,9 +1,9 @@
-
 export function customStringify(
   /*            biome-ignore lint/suspicious/noExplicitAny: JSON.stringify accepts any */
   v: any,
   _unused?: unknown,
-  intent?: string | number | undefined) {
+  intent?: string | number | undefined,
+) {
   const cache = new Map();
   return JSON.stringify(
     v,
@@ -22,6 +22,6 @@ export function customStringify(
       }
       return value;
     },
-    intent
+    intent,
   );
 }

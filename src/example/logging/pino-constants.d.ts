@@ -1,1 +1,1 @@
-declare module 'pino/lib/constants';
+declare module "pino/lib/constants";

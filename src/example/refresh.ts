@@ -1,5 +1,5 @@
 import alexaCookie from "../alexa-cookie";
-import { AmazonProxyOptions } from "../types/types";
+import type { AmazonProxyOptions } from "../types/types";
 
 import { config } from "./config";
 import { loadResult } from "./util/loadResult";

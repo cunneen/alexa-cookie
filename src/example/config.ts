@@ -3,14 +3,21 @@ import type { AmazonProxyOptions } from "../types/types";
 import { getLogger } from "./logging/getLogger";
 
 // local date/time as 'YYYY-MM-DDTHH:MM' e.g. '2025-12-11T12:02'
-const dateString = new Date(Date.now() - 1000 * 60 * new Date().getTimezoneOffset()).toISOString().substring(0,16)
+const dateString = new Date(
+  Date.now() - 1000 * 60 * new Date().getTimezoneOffset(),
+)
+  .toISOString()
+  .substring(0, 16);
 export const config: AmazonProxyOptions = {
   logger: getLogger({
     level: "debug",
     outputConsoleLevel: "debug",
     outputConsolePretty: true,
     outputLogFileLevel: "debug",
-    outputLogFilePath: path.join(__dirname, `../../logs/example_${dateString}.log.jsonl`)
+    outputLogFilePath: path.join(
+      __dirname,
+      `../../logs/example_${dateString}.log.jsonl`,
+    ),
   }),
   proxyOwnIp: "10.144.29.163", // required if proxy enabled: provide the own IP with which you later access the proxy.
   // Providing/Using a hostname here can lead to issues!

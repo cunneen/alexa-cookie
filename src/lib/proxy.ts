@@ -4,10 +4,7 @@
 /* jslint node: true */
 /* jslint esversion: 6 */
 
-import {
-  randomBytes,
-  randomFillSync,
-} from "node:crypto";
+import { randomBytes, randomFillSync } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type * as http from "node:http";
 import { dirname, join as pathJoin } from "node:path";
@@ -35,9 +32,7 @@ import type {
 import { base64URLEncode } from "../util/base64URLEncode";
 import { customStringify } from "../util/customStringify";
 import { LoggingFacade } from "../util/LoggingFacade";
-import {
-  sanitizeRequestForLogging,
-} from "../util/logging";
+import { sanitizeRequestForLogging } from "../util/logging";
 import { sha256 } from "../util/sha256";
 
 const FORMERDATA_STORE_VERSION = 4;
@@ -169,9 +164,9 @@ function initAmazonProxy(
       frc: initialCookies.frc,
     };
     writeFileSync(formerDataStorePath, JSON.stringify(formerDataStore), "utf8");
-    logger.debug(`saved registration data at: ${formerDataStorePath}`)
+    logger.debug(`saved registration data at: ${formerDataStorePath}`);
   } catch (_err) {
-    logger.warn(`could not save registration data at: ${formerDataStorePath}`)
+    logger.warn(`could not save registration data at: ${formerDataStorePath}`);
   }
 
   const code_verifier = base64URLEncode(randomBytes(32));
@@ -187,7 +182,7 @@ function initAmazonProxy(
     const url = req.originalUrl || req.url;
     _options.logger = _options.logger as Logger;
     logger.info(
-      `Router: ${url} / ${req.method} / ${customStringify(req.headers,null,2)}`
+      `Router: ${url} / ${req.method} / ${customStringify(req.headers, null, 2)}`,
     );
     if (req.headers.host === `${_options.proxyOwnIp}:${_options.proxyPort}`) {
       if (url.startsWith(`/www.${_options.baseAmazonPage}/`)) {
@@ -319,7 +314,7 @@ function initAmazonProxy(
 
     if (typeof proxyReq.getHeader === "function") {
       logger.debug(
-        `Alexa-Cookie: Headers ${customStringify(proxyReq.getHeaders(),null,2)}`
+        `Alexa-Cookie: Headers ${customStringify(proxyReq.getHeaders(), null, 2)}`,
       );
       let reqCookie = proxyReq.getHeader("cookie");
       if (reqCookie === undefined) {
@@ -346,7 +341,7 @@ function initAmazonProxy(
         proxyCookies += `; ${reqCookie}`;
       }
       logger.debug(
-        `Alexa-Cookie: Headers ${customStringify(proxyReq.getHeaders(),null,2)}`
+        `Alexa-Cookie: Headers ${customStringify(proxyReq.getHeaders(), null, 2)}`,
       );
     }
 
@@ -381,7 +376,8 @@ function initAmazonProxy(
       });
     }
     logger.debug(
-      `Alexa-Cookie: Proxy-Request: (modified:${modified})`, sanitizeRequestForLogging(proxyReq)
+      `Alexa-Cookie: Proxy-Request: (modified:${modified})`,
+      sanitizeRequestForLogging(proxyReq),
     );
   };
 
@@ -405,7 +401,7 @@ function initAmazonProxy(
     if (proxyResponseSocket?._host) reqestHost = proxyResponseSocket._host;
     logger.debug(`Alexa-Cookie: Proxy Response from Host: ${reqestHost}`);
     logger.debug(
-      `Alexa-Cookie: Proxy-Response Headers ${customStringify(proxyRes.headers,null,2)}`,
+      `Alexa-Cookie: Proxy-Response Headers ${customStringify(proxyRes.headers, null, 2)}`,
     );
     const sanitizedOutgoing = sanitizeRequestForLogging(
       proxyResponseSocket.parser.outgoing as unknown as http.ClientRequest,
@@ -424,7 +420,7 @@ function initAmazonProxy(
       proxyCookies = addCookies(proxyCookies, proxyRes.headers);
     }
     logger.debug(
-      `Alexa-Cookie: Cookies handled: ${customStringify(proxyCookies,null,2)}`
+      `Alexa-Cookie: Cookies handled: ${customStringify(proxyCookies, null, 2)}`,
     );
 
     const locationHeader =
@@ -455,9 +451,11 @@ function initAmazonProxy(
       proxyRes.headers.location = `http://${_options.proxyOwnIp}:${_options.proxyPort}/cookie-success`;
       delete proxyRes.headers.referer;
 
-      logger.debug(`Alexa-Cookie: Proxy caught cookie ${customStringify(proxyCookies,null,2)}`)
       logger.debug(
-        `Alexa-Cookie: Proxy caught parameters ${customStringify(queryParams, null, 2)}`
+        `Alexa-Cookie: Proxy caught cookie ${customStringify(proxyCookies, null, 2)}`,
+      );
+      logger.debug(
+        `Alexa-Cookie: Proxy caught parameters ${customStringify(queryParams, null, 2)}`,
       );
 
       callbackCookieFn?.(null, {
@@ -484,7 +482,9 @@ function initAmazonProxy(
       ) {
         proxyRes.headers.location = `http://${_options.proxyOwnIp}:${_options.proxyPort}/${reqestHost}${proxyRes.headers.location}`;
       }
-      logger.info(`Redirect: Final Location ----> ${proxyRes.headers.location}`);
+      logger.info(
+        `Redirect: Final Location ----> ${proxyRes.headers.location}`,
+      );
       return;
     }
 
@@ -497,7 +497,9 @@ function initAmazonProxy(
           const bodyOrig = body;
           body = replaceHosts(body);
           if (body !== bodyOrig) {
-            logger.debug("Alexa-Cookie: MODIFIED Response Body to rewrite URLs");
+            logger.debug(
+              "Alexa-Cookie: MODIFIED Response Body to rewrite URLs",
+            );
           }
         }
         return body;
