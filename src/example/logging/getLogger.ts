@@ -39,9 +39,7 @@ type PinoTransportPipelineItemType = TransportPipelineOptions<
 // ==== CONFIG ====
 // defaults, as specified in the tsdoc comments for LoggerOptions
 const DEFAULT_LOG_LEVEL =
-  process.env.PINO_LOG_LEVEL ||
-  process.env.LOG_LEVEL ||
-  "debug"
+  process.env.PINO_LOG_LEVEL || process.env.LOG_LEVEL || "debug";
 const defaultLoggerOptions: LoggerOptions = {
   level: DEFAULT_LOG_LEVEL,
   outputLogFileEnabled: true,
@@ -71,7 +69,7 @@ export function getLogger(
     | PinoTransportPipelineItemType
   )[];
   const pinoTemplate = {
-    target: 'pino-template',
+    target: "pino-template",
     options: {
       template: `<% 
         const {context, data} = it; 
@@ -113,7 +111,10 @@ export function getLogger(
         mkdir: true,
       },
     } as PinoTransportItemType;
-    pinoTransportTargets.push({ pipeline: [pinoTemplate, fileOptions], level: options.outputLogFileLevel ?? DEFAULT_LOG_LEVEL });
+    pinoTransportTargets.push({
+      pipeline: [pinoTemplate, fileOptions],
+      level: options.outputLogFileLevel ?? DEFAULT_LOG_LEVEL,
+    });
   }
 
   const pinoOptions = {
