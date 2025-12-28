@@ -121,7 +121,6 @@ class AlexaCookie {
       infoOrCallback: RequestInfoType | RequestCallbackType,
       callback?: RequestCallbackType,
     ) => {
-
       _self._logger.debug(
         `Alexa-Cookie: Sending Request with options: ${customStringify(options, null, 2)}`,
       );
@@ -141,7 +140,6 @@ class AlexaCookie {
       }
 
       const req = https.request(options, (res) => {
-
         let body = "";
         infoOrCallback.requests.push({ options: options, response: res });
 
@@ -207,7 +205,6 @@ class AlexaCookie {
     };
 
     const initConfig = () => {
-
       _options.amazonPage = _options.amazonPage || defaultAmazonPage;
       if (_options.formerRegistrationData?.amazonPage)
         _options.amazonPage = _options.formerRegistrationData.amazonPage;
@@ -297,7 +294,6 @@ class AlexaCookie {
       _options: AmazonProxyOptions,
       callback: RequestCallbackType,
     ) => {
-
       // get CSRF
       const csrfUrls = csrfOptions;
 
@@ -770,35 +766,58 @@ class AlexaCookie {
               },
             };
             _self._logger.debug("Alexa-Cookie: Get User data");
-            _self._logger.debug(`Options: ${customStringify(options, null, 2)}`);
+            _self._logger.debug(
+              `Options: ${customStringify(options, null, 2)}`,
+            );
             request(
               options,
               (error: ErrorParam, response: IncomingMessage, body) => {
                 if (!error) {
-                  try {
-                    if (typeof body !== "object") body = JSON.parse(body);
-                  } catch (err) {
+                  const statusCode = response?.statusCode as number;
+                  if (!(200 <= statusCode) && statusCode <= 299) {
+                    // not ok
                     _self._logger.error(
                       `Get User data Response: ${customStringify(body, null, 2)}`,
                     );
-                    _self._logger.error(err);
-                    callback?.(err, null);
+                    _self._logger.error(
+                      `      response headers: ${customStringify(response.headers, null, 2)}`,
+                    );
+                    callback?.(
+                      new Error(
+                        `Getting user data failed with status code ${statusCode}`,
+                      ),
+                      null,
+                    );
                     return;
-                  }
-                  _self._logger.debug(
-                    `Get User data Response:${customStringify(body, null, 2)}`,
-                  );
-
-                  Cookie = addCookies(Cookie, response.headers);
-
-                  if (body.marketPlaceDomainName) {
-                    const pos = body.marketPlaceDomainName.indexOf(".");
-                    if (pos !== -1)
-                      _options.amazonPage = body.marketPlaceDomainName.substr(
-                        pos + 1,
+                  } else {
+                    try {
+                      if (typeof body !== "object") body = JSON.parse(body);
+                    } catch (err) {
+                      _self._logger.error(
+                        `Get User data Response: ${customStringify(body, null, 2)}`,
                       );
+                      _self._logger.error(
+                        `      response headers: ${customStringify(response.headers, null, 2)}`,
+                      );
+                      _self._logger.error(err);
+                      callback?.(err, null);
+                      return;
+                    }
+                    _self._logger.debug(
+                      `Get User data Response:${customStringify(body, null, 2)}`,
+                    );
+
+                    Cookie = addCookies(Cookie, response.headers);
+
+                    if (body.marketPlaceDomainName) {
+                      const pos = body.marketPlaceDomainName.indexOf(".");
+                      if (pos !== -1)
+                        _options.amazonPage = body.marketPlaceDomainName.substr(
+                          pos + 1,
+                        );
+                    }
+                    loginData.amazonPage = _options.amazonPage;
                   }
-                  loginData.amazonPage = _options.amazonPage;
                 } else if (error && (!_options || !_options.amazonPage)) {
                   callback?.(error, null);
                   return;
@@ -848,7 +867,7 @@ class AlexaCookie {
                         delete loginData.verifier;
                         loginData.dataVersion = 2;
                         _self._logger.info(
-                          `Final Registration Result: ${customStringify(loginData)} `,
+                          `Final Registration Result: ${customStringify(loginData, null, 2)} `,
                         );
                         callback?.(null, loginData);
                       },
@@ -866,7 +885,6 @@ class AlexaCookie {
       accessToken: string,
       callback: RequestCallbackType,
     ) => {
-
       /*
           Register Capabilities - mainly needed for HTTP/2 push infos
        */
@@ -911,7 +929,6 @@ class AlexaCookie {
       refreshToken?: string,
       callback?: RequestCallbackType,
     ) => {
-
       Cookie = ""; // Reset because we are switching domains
       /*
           Token Exchange to Amazon Country Page
@@ -1133,8 +1150,8 @@ class AlexaCookie {
             const initCookies = parseCookie(
               _options.formerRegistrationData?.loginCookie ?? "",
             );
-            let newCookie = `frc = ${initCookies.frc}; `;
-            newCookie += `map - md=${initCookies["map-md"]}; `;
+            let newCookie = `frc=${initCookies.frc}; `;
+            newCookie += `map-md=${initCookies["map-md"]}; `;
             newCookie += comCookie;
 
             _options.formerRegistrationData.loginCookie = newCookie;
