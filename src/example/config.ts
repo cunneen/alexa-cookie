@@ -19,7 +19,8 @@ export const config: AmazonProxyOptions = {
       `../../logs/example_${dateString}.log.jsonl`,
     ),
   }),
-  proxyOwnIp: "10.144.29.163", // required if proxy enabled: provide the own IP with which you later access the proxy.
+  proxyOwnIp: "127.0.0.1", // required if proxy enabled: provide the own IP with which you later access the proxy.
+  // proxyOwnIp: "10.144.29.163", // required if proxy enabled: provide the own IP with which you later access the proxy.
   // Providing/Using a hostname here can lead to issues!
   // Needed to set up all rewriting and proxy stuff internally
 
